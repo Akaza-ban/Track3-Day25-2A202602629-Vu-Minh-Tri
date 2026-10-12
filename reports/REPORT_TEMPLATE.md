@@ -1,6 +1,6 @@
 # Lab 25B — Report
 
-**Họ tên / nhóm:** …  **Commit:** …  **Điểm tự động (`make grade`):** … / 90
+**Họ tên / nhóm:** …  **Commit:** …  **Điểm tự động (`make grade`):** … / 88
 
 > Mọi nhận định phải có số. Dán số từ `reports/gameday/*.json`, `reports/workflows.json`, `reports/slo.json`.
 
@@ -109,7 +109,7 @@ chỉ có sự cố này).
 Một tình huống mà client của bạn vẫn xử lý kém (gợi ý: G2 p95, chi phí khi beta gánh tải, cả 4 provider cùng chậm…),
 và bạn sẽ sửa thế nào.
 
-## 8. *(Tùy chọn — Part G)* Cache
+## 8. Cache (Part G)
 
 Số từ `reports/cache/*.json` (`make cache`).
 

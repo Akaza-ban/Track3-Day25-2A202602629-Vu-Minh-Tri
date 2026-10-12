@@ -1,12 +1,10 @@
-"""Autograder: 90 automatic points + 10 for the report (graded by hand).
+"""Autograder: 88 automatic points + 12 for the report (graded by hand).
 
     python scripts/grade.py                      # what students run
     python scripts/grade.py --seeds 25,26,27 \\
         --scenarios instructor/scenarios_hidden.yaml \\
         --cache-scenarios instructor/scenarios_cache_hidden.yaml \\
         --hidden-slo data/sli_30d_hidden.csv     # what instructors run
-
-Part G (caching) is optional: up to 8 automatic bonus points (+2 for its report section).
 """
 
 from __future__ import annotations
@@ -33,20 +31,19 @@ from gameday_lab.slo.scoring import score_alerts
 from gameday_lab.workflows.runner import run_workflows
 
 UNIT_TESTS = {  # file -> (part, points)
-    "tests/test_errors_retry.py": ("A", 15),
-    "tests/test_breaker.py": ("B", 15),
+    "tests/test_errors_retry.py": ("A", 12),
+    "tests/test_breaker.py": ("B", 12),
     "tests/test_client.py": ("C", 6),
-    "tests/test_executor.py": ("D", 5),
-    "tests/test_alerting.py": ("E", 5),
+    "tests/test_executor.py": ("D", 4),
+    "tests/test_alerting.py": ("E", 4),
+    "tests/test_cache.py": ("G", 4),
 }
-BONUS_TESTS = {"tests/test_cache.py": ("G", 3)}  # Part G (optional)
 POINTS_PER_TAPE = 4  # 6 tapes -> 24
-WORKFLOW_POINTS = 10
-SLO_PUBLIC_POINTS = 5
-SLO_HIDDEN_POINTS = 5
-REPORT_POINTS = 10
-CACHE_TAPE_POINTS = 5
-BONUS_REPORT_POINTS = 2
+WORKFLOW_POINTS = 8
+SLO_PUBLIC_POINTS = 4
+SLO_HIDDEN_POINTS = 4
+CACHE_TAPE_POINTS = 6
+REPORT_POINTS = 12
 WORKFLOW_CHECKS = {"duplicate_refunds": 0, "duplicate_emails": 0, "lost_refunds": 0}
 
 
@@ -61,11 +58,10 @@ class _Collector:
 
 def unit_tests() -> dict[str, Any]:
     collector = _Collector()
-    files = {**UNIT_TESTS, **BONUS_TESTS}
     with contextlib.redirect_stdout(io.StringIO()):
-        pytest.main(["-q", "-p", "no:cacheprovider", *files], plugins=[collector])
+        pytest.main(["-q", "-p", "no:cacheprovider", *UNIT_TESTS], plugins=[collector])
     out = {}
-    for path, (part, pts) in files.items():
+    for path, (part, pts) in UNIT_TESTS.items():
         res = collector.results.get(path, [])
         passed = sum(res)
         out[path] = {"part": part, "passed": passed, "total": len(res),
@@ -151,13 +147,10 @@ def main() -> None:
     parts["D"] += board["workflows"]["points"]
     parts["E"] += board["slo_public"]["points"] + board["slo_hidden"]["points"]
     parts["G"] += sum(r["points"] for r in board["cache_tape"].values())
-    auto = round(sum(v for k, v in parts.items() if k != "G"), 2)
-    bonus = round(parts["G"], 2)
+    auto = round(sum(parts.values()), 2)
     board["summary"] = {"parts": {k: round(v, 2) for k, v in sorted(parts.items())},
                         "automatic": auto, "automatic_max": 100 - REPORT_POINTS,
-                        "report_max": REPORT_POINTS,
-                        "bonus_g": bonus, "bonus_g_automatic_max": 3 + CACHE_TAPE_POINTS,
-                        "bonus_g_report_max": BONUS_REPORT_POINTS}
+                        "report_max": REPORT_POINTS}
 
     print("\nUnit tests")
     for path, r in board["unit_tests"].items():
@@ -169,13 +162,12 @@ def main() -> None:
     print(f"Workflows         [D] {'PASS' if board['workflows']['pass'] else 'FAIL'}")
     print(f"SLO alerting      [E] public {'PASS' if board['slo_public']['pass'] else 'FAIL'}"
           f" | hidden {board['slo_hidden']['pass']}")
-    print("Cache tape, optional (cached client, seeds " + args.seeds + ")")
+    print("Cache tape (cached client, seeds " + args.seeds + ")")
     for key, r in board["cache_tape"].items():
         failed = sorted({f for run in r["runs"] for f in run["failed"]})
         print(f"  [G] {key:28s} {'PASS' if r['pass'] else 'FAIL'} {', '.join(failed)}")
     print(f"\nParts: {board['summary']['parts']}")
     print(f"AUTOMATIC SCORE: {auto} / {100 - REPORT_POINTS}   (+ report & postmortem: /{REPORT_POINTS})")
-    print(f"BONUS Part G:    {bonus} / {3 + CACHE_TAPE_POINTS}    (+ report section 8: /{BONUS_REPORT_POINTS})")
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(board, indent=2, default=str))
 

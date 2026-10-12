@@ -1,4 +1,4 @@
-"""Part G (optional) — SemanticCache and CachingClient, tested without the simulator.
+"""Part G — SemanticCache and CachingClient, tested without the simulator.
 
 The CachingClient tests use a stub instead of your ResilientClient, so Part G
 can be done even if Part C is unfinished.

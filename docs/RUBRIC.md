@@ -1,26 +1,29 @@
 # Rubric — Lab 25B Game Day (100 điểm)
 
-## Tự động — 90 điểm (`make grade`)
+## Tự động — 88 điểm (`make grade`)
 
 | Phần | Điểm | Nguồn |
 |---|---:|---|
-| A. Phân loại lỗi & retry | 15 | `tests/test_errors_retry.py` — điểm = 15 × (test pass / tổng) |
-| B. Circuit breaker | 15 | `tests/test_breaker.py` |
+| A. Phân loại lỗi & retry | 12 | `tests/test_errors_retry.py` — điểm = 12 × (test pass / tổng) |
+| B. Circuit breaker | 12 | `tests/test_breaker.py` |
 | C. ResilientClient | 6 | `tests/test_client.py` |
 | C. Game Day | 24 | 6 băng × 4 điểm. Một băng chỉ được điểm khi PASS **mọi** check trên **mọi** seed. Giảng viên chấm bằng bản băng ẩn + 3 seed. |
-| D. Workflow | 5 | `tests/test_executor.py` |
-| D. Workflow | 10 | 500 workflow có crash: 0 hoàn tiền trùng, 0 email trùng, 0 hoàn tiền mất, completion ≥ 99%, wasted LLM / crash ≤ 0,6 |
-| E. Alerting | 5 | `tests/test_alerting.py` |
-| E. Alerting | 5 | `data/sli_30d.csv` (public): mọi sự cố page/ticket đúng hạn, 0 false page |
-| E. Alerting | 5 | Dữ liệu ẩn của giảng viên, cùng tiêu chí |
+| D. Workflow | 4 | `tests/test_executor.py` |
+| D. Workflow | 8 | 500 workflow có crash: 0 hoàn tiền trùng, 0 email trùng, 0 hoàn tiền mất, completion ≥ 99%, wasted LLM / crash ≤ 0,6 |
+| E. Alerting | 4 | `tests/test_alerting.py` |
+| E. Alerting | 4 | `data/sli_30d.csv` (public): mọi sự cố page/ticket đúng hạn, 0 false page |
+| E. Alerting | 4 | Dữ liệu ẩn của giảng viên, cùng tiêu chí |
+| G. Cache | 4 | `tests/test_cache.py` |
+| G. Cache | 6 | Băng C1 (`make cache`): PASS **mọi** check trên **mọi** seed; giảng viên chấm bằng băng ẩn + 3 seed |
 
-## Chấm tay — 10 điểm (`reports/REPORT.md`)
+## Chấm tay — 12 điểm (`reports/REPORT.md`)
 
 | Mục | Điểm | Đạt đủ khi |
 |---|---:|---|
 | Bảng Game Day + cấu hình có lý do | 2 | Đủ 6 băng × 2 client; mỗi tham số chính có lý do gắn với **số liệu** của một băng |
 | 3 thí nghiệm | 2 | Có số trước/sau; giải thích đúng cơ chế (budget vs breaker, timeout vs treo, tương thích tool) |
 | Workflow + alerting | 1 | Trả lời đúng "vì sao cần cả hai"; tính đúng error budget và quyết định freeze |
+| Cache (mục 8) | 2 | Có bảng không cache / có cache; mỗi tham số `cache:` có lý do gắn với số liệu (`wrong_answers_by_reason`, `outdated_answers`, `faq_availability`); trả lời đúng câu hỏi về câu trả lời cá nhân và về alert khi đang phục vụ stale |
 | Postmortem G2 | 5 | Xem bên dưới |
 
 ### Postmortem G2 (5 điểm)
@@ -39,15 +42,6 @@
 |---|---:|
 | Sửa file bị cấm (sim, tests, scenarios, services…) | toàn bộ phần liên quan |
 | Hard-code thời điểm / tên băng trong client | Part C = 0 |
+| Hard-code thời điểm, tên băng hoặc tên tài liệu trong cache | Part G = 0 |
 | Report không có số liệu | tối đa −5 |
 | Code không chạy trên máy sạch (`pip install -e ".[dev]" && make grade`) | −10 |
-
-## Điểm thưởng — Part G, caching (tùy chọn, tối đa +10)
-
-Điểm thưởng bù được điểm mất ở phần khác; tổng điểm vẫn tối đa 100.
-
-| Nguồn | Điểm | Cách chấm |
-|---|---:|---|
-| `tests/test_cache.py` | 3 | 3 × (test pass / tổng) |
-| Băng C1 (`make cache`) | 5 | PASS **mọi** check trên **mọi** seed; giảng viên chấm bằng băng ẩn + 3 seed |
-| Report mục 8 | 2 | Có bảng không cache / có cache; mỗi tham số `cache:` có lý do gắn với số liệu (`wrong_answers_by_reason`, `outdated_answers`, `faq_availability`); trả lời đúng câu hỏi về câu trả lời cá nhân và về alert khi đang phục vụ stale |

@@ -47,7 +47,7 @@ Sau lab, bạn làm được:
 5. Làm workflow có side effect đạt **exactly-once effect**: idempotency key + checkpoint + resume sau crash.
 6. Viết **burn-rate alerting** đa cửa sổ (SRE Workbook) và tính **error budget**.
 7. Viết một **postmortem blameless** có số liệu.
-8. *(Tùy chọn)* Dùng **semantic cache có kiểm soát** (scope, ngưỡng, TTL, invalidation) và **stale-if-error** để câu hỏi
+8. Dùng **semantic cache có kiểm soát** (scope, ngưỡng, TTL, invalidation) và **stale-if-error** để câu hỏi
    FAQ vẫn được trả lời khi mọi provider sập — mà không trả lời sai.
 
 ## 3. Cài đặt và chạy
@@ -62,9 +62,9 @@ make gameday     # client của bạn (sau khi làm Part A–C)
 make compare     # naive vs của bạn, cạnh nhau
 make workflows   # Part D
 make slo         # Part E
-make cache       # Part G (tùy chọn): không cache vs cache của bạn trên băng C1
+make cache       # Part G: không cache vs cache của bạn trên băng C1
 make plot        # hình cho postmortem (cần: pip install -e ".[plot]")
-make grade       # điểm tự động (90/100) -> reports/scoreboard.json
+make grade       # điểm tự động (88/100) -> reports/scoreboard.json
 ```
 
 Không có `make`? Chạy trực tiếp: `python scripts/run_gameday.py --client both`, `python -m pytest -q`, …
@@ -110,20 +110,20 @@ Băng caching (Part G) có thêm `faq_availability`, `cache_hit_ratio`, `stale_s
 
 Khi chấm, giảng viên dùng **bản băng ẩn** (lệch thời điểm, đổi cường độ) và nhiều seed — đừng hard-code thời gian.
 
-Băng thứ bảy, **C1** (tùy chọn), nằm riêng trong `configs/scenarios_cache.yaml` — xem Part G.
+Băng thứ bảy, **C1** (Part G), nằm riêng trong `configs/scenarios_cache.yaml` — xem Part G.
 
 ## 6. Nhiệm vụ
 
-Thời lượng thiết kế: **4 giờ** = 2 giờ core trên lớp (A–C) + 2 giờ stretch (D–F). Part G là phần **tùy chọn**
-(~45 phút, điểm thưởng) cho nhóm xong sớm hoặc làm ở nhà.
+Thời lượng thiết kế: **4 giờ** = 2 giờ core trên lớp (A–C) + 2 giờ cho G, D, E và report F (report hoàn thiện ở nhà
+nếu cần). Làm Part G ngay sau Part C — băng C1 dùng `ResilientClient` của bạn.
 
-### Part A — Phân loại lỗi & retry (15 điểm · ~30 phút)
+### Part A — Phân loại lỗi & retry (12 điểm · ~25 phút)
 File: `src/gameday_lab/errors.py`, `src/gameday_lab/retry.py` · Test: `tests/test_errors_retry.py`
 - `classify()`, `is_retryable()`, `counts_toward_breaker()`, `failover_helps()`.
 - `FullJitterBackoff.delay()` — full jitter; nếu có `retry_after` thì **không bao giờ** retry sớm hơn.
 - `RetryBudget` — token bucket: mỗi request gửi lần đầu nạp `ratio` token, mỗi retry tiêu 1 token, hồi `min_per_s`/giây.
 
-### Part B — Circuit breaker sliding-window (15 điểm · ~40 phút)
+### Part B — Circuit breaker sliding-window (12 điểm · ~40 phút)
 File: `src/gameday_lab/breaker.py` · Test: `tests/test_breaker.py`
 - Trip theo **tỷ lệ lỗi** trên `window_size` kết quả gần nhất, chỉ khi đã có `min_calls` kết quả.
 - Call thành công nhưng chậm (≥ `slow_call_s`) là dấu hiệu xấu → trip theo `slow_rate_threshold`.
@@ -137,26 +137,26 @@ File: `src/gameday_lab/client.py` · Test: `tests/test_client.py` (6đ) + 6 băn
 - Tinh chỉnh khối `client:` trong `configs/gameday.yaml` và **giải thích** trong report.
 - Chạy `make compare` cho tới khi 6/6 băng PASS.
 
-### Part D — Workflow hoàn tiền exactly-once (15 điểm · ~35 phút)
-File: `src/gameday_lab/workflows/executor.py` · Test: `tests/test_executor.py` (5đ) + `make workflows` (10đ)
+### Part D — Workflow hoàn tiền exactly-once (12 điểm · ~30 phút)
+File: `src/gameday_lab/workflows/executor.py` · Test: `tests/test_executor.py` (4đ) + `make workflows` (8đ)
 - Workflow 5 bước: `classify_request → lookup_order → issue_refund → send_email → write_summary`.
 - Payment có thể đã chạy nhưng response bị mất (`ServiceTimeout`), hoặc **worker chết ngay sau khi tiền đã đi** (`WorkerCrash`).
 - Cần: idempotency key **ổn định** theo (session, step) + checkpoint vào `DurableStore` **sau** khi step thành công + resume.
 - Đạt: 0 hoàn tiền trùng, 0 email trùng, 0 hoàn tiền bị mất, ≥ 99% hoàn tất, `wasted_llm_per_crash ≤ 0,6`.
 
-### Part E — Burn-rate alerting & error budget (15 điểm · ~35 phút)
-File: `src/gameday_lab/slo/alerting.py` · Test: `tests/test_alerting.py` (5đ) + `make slo` (5đ) + dữ liệu ẩn (5đ)
+### Part E — Burn-rate alerting & error budget (12 điểm · ~30 phút)
+File: `src/gameday_lab/slo/alerting.py` · Test: `tests/test_alerting.py` (4đ) + `make slo` (4đ) + dữ liệu ẩn (4đ)
 - SLO availability 99,5% / 30 ngày. Dữ liệu: `data/sli_30d.csv` (43.200 phút) + nhãn sự cố `data/sli_30d_labels.json`.
 - Luật: page 14,4× (1h & 5m), page 6× (6h & 30m), ticket 1× (3d & 6h). Dùng **prefix sum** để tính nhanh.
 - Đạt: page đúng mọi sự cố lớn trong thời hạn, ticket cho rò rỉ chậm (không page), **0 false page** cho các blip.
 - `error_budget_report()`: budget đã tiêu bao nhiêu, có phải đóng băng release không.
 
-### Part F — Report & postmortem (10 điểm · ~30 phút)
-Copy `reports/REPORT_TEMPLATE.md` → `reports/REPORT.md` và điền đủ. Trọng tâm: **postmortem blameless cho băng G2**
-với client naive (dùng `make plot` + CSV trong `reports/gameday/`).
+### Part F — Report & postmortem (12 điểm · ~25 phút trên lớp)
+Copy `reports/REPORT_TEMPLATE.md` → `reports/REPORT.md` và điền đủ, kể cả mục 8 (cache). Trọng tâm: **postmortem
+blameless cho băng G2** với client naive (dùng `make plot` + CSV trong `reports/gameday/`).
 
-### Part G — *(Tùy chọn, +10 điểm thưởng)* Semantic cache & stale-if-error (~45 phút)
-File: `src/gameday_lab/cache.py` · Test: `tests/test_cache.py` (3đ) + băng C1 (5đ) + report mục 8 (2đ)
+### Part G — Semantic cache & stale-if-error (10 điểm · ~40 phút)
+File: `src/gameday_lab/cache.py` · Test: `tests/test_cache.py` (4đ) + băng C1 (6đ) · mục 8 của report tính vào Part F
 
 60% lượt user là câu hỏi FAQ ("Chính sách hoàn tiền thế nào?", "Phí ship đi tỉnh bao nhiêu?"). Mỗi lượt FAQ là **một**
 call `chat` mang `call.request` (`text`, `user_id`, `personal`, `prompt_version`, `embedding`). Khi call thành công,
@@ -179,6 +179,7 @@ simulator đặt câu trả lời vào `call.answer` (`Answer` có `prompt_versi
   `wrong_answers_by_reason`, chỉnh từng tham số và giải thích bằng số ở mục 8 của report.
 
 `tests/test_cache.py` dùng client giả nên làm được ngay; băng C1 cần `ResilientClient` (Part C) đã chạy.
+Nếu Part C chưa xong thì vẫn lấy được 4 điểm test của Part G.
 
 ## 7. Quy tắc
 
@@ -197,15 +198,15 @@ từ `make grade`. Grader chạy: `pip install -e ".[dev]" && make grade` trên 
 
 | Phần | Điểm | Chấm thế nào |
 |---|---:|---|
-| A. Phân loại lỗi & retry | 15 | `tests/test_errors_retry.py` (tỷ lệ test pass) |
-| B. Circuit breaker | 15 | `tests/test_breaker.py` |
+| A. Phân loại lỗi & retry | 12 | `tests/test_errors_retry.py` (tỷ lệ test pass) |
+| B. Circuit breaker | 12 | `tests/test_breaker.py` |
 | C. ResilientClient | 30 | `tests/test_client.py` (6) + 6 băng × 4 (băng ẩn, nhiều seed) |
-| D. Workflow exactly-once | 15 | `tests/test_executor.py` (5) + 500 workflow có crash (10) |
-| E. Alerting & error budget | 15 | `tests/test_alerting.py` (5) + dữ liệu public (5) + dữ liệu ẩn (5) |
-| F. Report & postmortem | 10 | chấm tay — xem `docs/RUBRIC.md` |
-| G. *(Tùy chọn)* Caching | +10 thưởng | `tests/test_cache.py` (3) + băng C1 (5, băng ẩn, nhiều seed) + report mục 8 (2) |
+| D. Workflow exactly-once | 12 | `tests/test_executor.py` (4) + 500 workflow có crash (8) |
+| E. Alerting & error budget | 12 | `tests/test_alerting.py` (4) + dữ liệu public (4) + dữ liệu ẩn (4) |
+| G. Cache & stale-if-error | 10 | `tests/test_cache.py` (4) + băng C1 (6, băng ẩn, nhiều seed) |
+| F. Report & postmortem | 12 | chấm tay — xem `docs/RUBRIC.md` (gồm 2 điểm cho mục 8, cache) |
 
-Điểm thưởng Part G bù được điểm mất ở phần khác, nhưng tổng vẫn tối đa 100.
+88 điểm tự động (`make grade`) + 12 điểm chấm tay.
 
 ## 10. Lỗi thường gặp
 
@@ -237,7 +238,7 @@ từ `make grade`. Grader chạy: `pip install -e ".[dev]" && make grade` trên 
 **Retry budget có được chấm trên băng không?** Gián tiếp (G3 `retry_ratio`) và qua unit test. Trong report có một
 thí nghiệm bật/tắt budget — hãy giải thích kết quả.
 
-**Lab có phần caching không?** Có — Part G (tùy chọn, điểm thưởng): semantic cache có scope, ngưỡng, TTL, invalidation
+**Lab có phần caching không?** Có — Part G (10 điểm, bắt buộc): semantic cache có scope, ngưỡng, TTL, invalidation
 và stale-if-error, chấm trên băng C1. Prompt caching phía provider (giảm giá token đầu vào) không mô phỏng ở đây —
 xem bài giảng Day 25.
 

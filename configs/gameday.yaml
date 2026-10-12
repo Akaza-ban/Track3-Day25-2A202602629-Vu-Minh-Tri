@@ -48,7 +48,7 @@ client:
     half_open_successes: 2
 
 # ----------------------------------------------------------------------------
-# Part G (optional): YOUR semantic cache settings (read by SemanticCache).
+# Part G: YOUR semantic cache settings (read by SemanticCache).
 # These starter values are deliberately naive: run `make cache`, read
 # wrong_answers_by_reason, tune each value and justify it in report section 8.
 # ----------------------------------------------------------------------------

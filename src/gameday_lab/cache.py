@@ -1,4 +1,4 @@
-"""Part G (optional) — a semantic response cache that is safe, fresh, and keeps FAQ answers up in an outage.
+"""Part G — a semantic response cache that is safe, fresh, and keeps FAQ answers up in an outage.
 
 * ``SemanticCache``: lookup by embedding similarity *within a scope* (prompt
   version; personal questions never), TTL + a stale window, invalidation by
