@@ -1,0 +1,75 @@
+# Incident tapes for Game Day. DO NOT EDIT — the grader uses its own copy.
+# Times are virtual seconds from the start of the tape.
+
+scenarios:
+
+  G1_rate_limit_spike:
+    title: "Marketing push: traffic x2.5 for 3 minutes, alpha tenant limit 12 rps"
+    duration_s: 480
+    traffic: [{start: 120, end: 300, multiplier: 2.5}]
+    effects:
+      - {provider: alpha, start: 0, end: 480, rate_limit_rps: 12}
+    restore_at: 300
+    checks:
+      availability_min: 0.98
+      retry_after_violations_max: 0
+      amplification_max: 1.6
+
+  G2_overload_storm:
+    title: "alpha loses 75% of its GPUs for 3 minutes (529 + slow queue)"
+    duration_s: 600
+    effects:
+      - {provider: alpha, start: 120, end: 300, capacity_factor: 0.25}
+    restore_at: 300
+    checks:
+      availability_min: 0.95
+      amplification_max: 1.6
+      recovery_s_max: 30
+      primary_share_after_restore_min: 0.8
+
+  G3_brownout:
+    title: "alpha brown-out: 30% of requests fail with 500 for 3 minutes"
+    duration_s: 480
+    effects:
+      - {provider: alpha, start: 120, end: 300, error_rate: 0.30}
+    restore_at: 300
+    checks:
+      availability_min: 0.98
+      retry_ratio_max: 0.10
+      amplification_max: 1.6
+
+  G4_slow_region:
+    title: "alpha still answers, but 5 s slower (network issue) — no errors at all"
+    duration_s: 540
+    effects:
+      - {provider: alpha, start: 120, end: 420, extra_latency_s: 5.0}
+    restore_at: 420
+    checks:
+      availability_min: 0.97
+      latency_p95_s_max: 10
+      primary_share_after_restore_min: 0.8
+
+  G5_bad_deploy_then_quota:
+    title: "Bad deploy (60% malformed requests) then the A account runs out of quota"
+    duration_s: 540
+    malformed: [{start: 60, end: 180, rate: 0.6}]
+    primary_only: [{start: 60, end: 180}]
+    effects:
+      - {family: A-large, start: 300, end: 540, quota_exhausted: true}
+    checks:
+      client_error_retries_max: 0
+      unneeded_failovers_max: 10
+      availability_min: 0.78
+
+  G6_provider_outage:
+    title: "Provider A down everywhere (alpha 503, alpha-eu hangs); B tightens its rate limit"
+    duration_s: 600
+    effects:
+      - {provider: alpha, start: 120, end: 420, outage: refuse}
+      - {provider: alpha-eu, start: 120, end: 420, outage: hang}
+      - {provider: beta, start: 120, end: 420, rate_limit_rps: 9}   # everyone fails over to B
+    restore_at: 420
+    checks:
+      availability_min: 0.95
+      incompatible_routes_max: 0
+      primary_share_after_restore_min: 0.8

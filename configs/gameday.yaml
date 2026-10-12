@@ -1,0 +1,48 @@
+# Lab 25B — Game Day config.
+# The `client:` section is YOURS to tune (and justify in the report).
+# Everything else describes the world; the grader uses its own copy.
+
+seed: 25
+
+workload:
+  turns_per_s: 4.0        # user turns arriving per second (Poisson)
+  turn_deadline_s: 30     # the user leaves after 30 s
+  tool_exec_s: 0.3        # executing the tool between the two LLM calls
+  steps: [tool, chat]     # step 1 needs tool calling, step 2 is plain chat
+  base_malformed_rate: 0.0
+
+# Four deployments. alpha and alpha-eu run the SAME model (family A-large).
+providers:
+  - {name: alpha,      family: A-large, region: us, supports_tools: true,  cost_per_call: 1.0,
+     servers: 18, service_median_s: 1.2, max_queue_wait_s: 10, rate_limit_rps: 20}
+  - {name: alpha-eu,   family: A-large, region: eu, supports_tools: true,  cost_per_call: 1.0,
+     servers: 16, service_median_s: 1.5, max_queue_wait_s: 10, rate_limit_rps: 10}
+  - {name: beta,       family: B-large, region: us, supports_tools: true,  cost_per_call: 1.4,
+     servers: 30, service_median_s: 1.8, max_queue_wait_s: 10, rate_limit_rps: 16}
+  - {name: gamma-mini, family: C-mini,  region: us, supports_tools: false, cost_per_call: 0.2,
+     servers: 40, service_median_s: 0.6, max_queue_wait_s: 10, rate_limit_rps: 30}
+
+fallback_order: [alpha, alpha-eu, beta, gamma-mini]
+
+# ----------------------------------------------------------------------------
+# YOUR client settings (read by ResilientClient). Tune them, explain them.
+# ----------------------------------------------------------------------------
+client:
+  attempt_timeout_s: 8.0
+  max_attempts_per_provider: 2      # 1 retry on the same provider, then fail over
+  min_time_left_s: 1.0              # don't start an attempt that cannot finish
+  backoff_base_s: 0.25
+  backoff_cap_s: 4.0
+  retry_budget_ratio: 0.1           # retries <= ~10% of first attempts
+  retry_budget_min_per_s: 0.5
+  retry_budget_max_tokens: 20
+  quota_cooldown_s: 300
+  breaker:
+    window_size: 20
+    min_calls: 10
+    failure_rate_threshold: 0.5
+    slow_call_s: 5.0
+    slow_rate_threshold: 0.6
+    open_duration_s: 10.0
+    half_open_max_probes: 2
+    half_open_successes: 2

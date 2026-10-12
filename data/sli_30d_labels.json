@@ -1,0 +1,65 @@
+[
+  {
+    "name": "checkout_bug",
+    "start_min": 3480,
+    "duration_min": 45,
+    "error_ratio": 0.15,
+    "expect": "page",
+    "max_delay_min": 35,
+    "note": "15% errors for 45 min"
+  },
+  {
+    "name": "provider_outage",
+    "start_min": 8760,
+    "duration_min": 10,
+    "error_ratio": 1.0,
+    "expect": "page",
+    "max_delay_min": 8,
+    "note": "full outage at night"
+  },
+  {
+    "name": "deploy_blip",
+    "start_min": 15240,
+    "duration_min": 4,
+    "error_ratio": 0.3,
+    "expect": "none",
+    "max_delay_min": 0,
+    "note": "4-min blip, self-healed"
+  },
+  {
+    "name": "slow_leak",
+    "start_min": 20700,
+    "duration_min": 2880,
+    "error_ratio": 0.015,
+    "expect": "ticket",
+    "max_delay_min": 1800,
+    "note": "1.5% for 2 days"
+  },
+  {
+    "name": "degraded_evening",
+    "start_min": 30000,
+    "duration_min": 360,
+    "error_ratio": 0.04,
+    "expect": "page",
+    "max_delay_min": 330,
+    "note": "4% for 6 hours"
+  },
+  {
+    "name": "night_spike",
+    "start_min": 34740,
+    "duration_min": 3,
+    "error_ratio": 0.6,
+    "expect": "none",
+    "max_delay_min": 0,
+    "note": "3-min spike, low traffic"
+  },
+  {
+    "name": "small_bump",
+    "start_min": 39540,
+    "duration_min": 20,
+    "error_ratio": 0.12,
+    "expect": "none",
+    "max_delay_min": 0,
+    "note": "20 min at 12% ~ 1% of budget"
+  }
+]

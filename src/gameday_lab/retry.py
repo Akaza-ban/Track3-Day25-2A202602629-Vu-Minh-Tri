@@ -1,0 +1,65 @@
+"""Part A2 — Backoff with full jitter, and a retry budget.
+
+Tests: tests/test_errors_retry.py
+"""
+
+from __future__ import annotations
+
+import random
+
+
+class FullJitterBackoff:
+    """Exponential backoff with *full* jitter (Brooker, AWS 2015).
+
+    delay(n) = uniform(0, min(cap_s, base_s * 2**(n-1)))   for the n-th retry (n >= 1)
+
+    If the provider sent ``retry_after``, honour it: never retry earlier than
+    ``retry_after``; add a small jitter on top so clients do not all come back
+    in the same instant: retry_after + uniform(0, base_s).
+    """
+
+    def __init__(self, base_s: float = 0.25, cap_s: float = 8.0, rng: random.Random | None = None) -> None:
+        if base_s <= 0 or cap_s <= 0:
+            raise ValueError("base_s and cap_s must be positive")
+        self.base_s = base_s
+        self.cap_s = cap_s
+        self.rng = rng or random.Random(0)
+
+    def delay(self, retry_number: int, retry_after: float | None = None) -> float:
+        """TODO(student).
+
+        * raise ValueError if retry_number < 1
+        * with retry_after:    retry_after + rng.uniform(0, base_s)
+        * without retry_after: rng.uniform(0, min(cap_s, base_s * 2 ** (retry_number - 1)))
+        Use ``self.rng`` (seeded) — never the global ``random`` module.
+        """
+        raise NotImplementedError("TODO(student): FullJitterBackoff.delay()")
+
+
+class RetryBudget:
+    """Token-bucket retry budget (as in Finagle / gRPC retry throttling).
+
+    * The bucket starts full (``max_tokens``).
+    * Every *first* attempt deposits ``ratio`` tokens (capped at ``max_tokens``).
+    * Tokens also refill at ``min_per_s`` per second, so a quiet service can
+      still retry occasionally.
+    * A retry is allowed only if one whole token is available; it consumes it.
+
+    With ratio=0.1 retries can never exceed ~10% of traffic, however bad the
+    incident — which is exactly what stops a retry storm.
+    """
+
+    def __init__(self, ratio: float = 0.1, min_per_s: float = 0.5, max_tokens: float = 20.0) -> None:
+        self.ratio = ratio
+        self.min_per_s = min_per_s
+        self.max_tokens = max_tokens
+        self.tokens = max_tokens
+        self._last: float | None = None  # virtual time of the previous call
+
+    def record_request(self, now: float) -> None:
+        """TODO(student): refill by time elapsed since the previous call, then deposit ``ratio``."""
+        raise NotImplementedError("TODO(student): RetryBudget.record_request()")
+
+    def try_acquire_retry(self, now: float) -> bool:
+        """TODO(student): refill by time elapsed; if tokens >= 1, take one and return True."""
+        raise NotImplementedError("TODO(student): RetryBudget.try_acquire_retry()")
