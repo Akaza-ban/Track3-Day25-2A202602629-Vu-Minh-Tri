@@ -2,11 +2,13 @@
 
 **AICB-P2T3 · Ngày 25 · Circuit Breakers, Caching & Reliability for Production Agents**
 
-> Lab 25A (repo `K3/K4-Day25-Track3-Reliability-Agent`) cho bạn **xây** một reliability gateway từ đầu.
-> Lab 25B đặt bạn vào vai **on-call**: hệ thống đã chạy, đã sập, và bạn phải chứng minh bản sửa của mình
-> chịu được 6 "băng sự cố" (incident tape) được ghi lại từ các sự cố thật — rồi viết postmortem.
+> Bạn vào vai **on-call** của ShopAgent: bản v1 đang chạy production vừa sập vì một retry storm.
+> Bạn phải thay nó bằng một client chịu lỗi, rồi chứng minh bằng số rằng bản sửa chịu được 6 "băng sự cố"
+> (incident tape) dựng lại theo các kiểu sự cố thật — và viết postmortem.
 
-Không cần API key, không cần Docker. Python ≥ 3.10 + `pyyaml` + `pytest`.
+**Lab độc lập.** Không cần làm hay chạy lab nào trước, kể cả các repo `K3/K4-Day25-Track3-Reliability-Agent`.
+"Hệ thống đã sập" là bối cảnh có sẵn trong repo này: provider LLM, traffic và sự cố đều do trình mô phỏng
+trong `src/gameday_lab/sim/` tạo ra. Không cần API key, không cần Docker. Python ≥ 3.10 + `pyyaml` + `pytest`.
 
 ---
 
@@ -193,7 +195,8 @@ từ `make grade`. Grader chạy: `pip install -e ".[dev]" && make grade` trên 
 **Retry budget có được chấm trên băng không?** Gián tiếp (G3 `retry_ratio`) và qua unit test. Trong report có một
 thí nghiệm bật/tắt budget — hãy giải thích kết quả.
 
-**Có cần semantic cache không?** Không — cache đã có trong Lab 25A. Lab này tập trung vào failure handling.
+**Lab có phần caching không?** Không. Lab này chỉ tập trung vào xử lý lỗi (retry, breaker, fallback, idempotency, SLO);
+prompt caching và semantic cache được học trong bài giảng Day 25.
 
 ## 12. Đọc thêm
 

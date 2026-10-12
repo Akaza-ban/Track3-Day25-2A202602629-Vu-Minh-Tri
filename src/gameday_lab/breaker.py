@@ -1,6 +1,6 @@
 """Part B — Sliding-window circuit breaker that is safe under concurrency.
 
-Differences from the "count 5 failures" breaker of Lab 25A:
+Differences from the textbook "open after 5 consecutive failures" breaker:
 
 * trips on the failure *rate* over the last ``window_size`` results, and only
   once ``min_calls`` results are in (no tripping on 2 errors at 3am);
