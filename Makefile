@@ -1,4 +1,4 @@
-.PHONY: install test baseline gameday compare workflows slo plot grade sli-data lint clean
+.PHONY: install test baseline gameday compare workflows slo cache plot grade sli-data lint clean
 
 PY ?= python
 
@@ -23,6 +23,9 @@ workflows:           ## 500 refund workflows with crash injection
 slo:                 ## burn-rate alerting on 30 days of SLI data
 	$(PY) scripts/run_slo.py --alerter both
 
+cache:               ## Part G (optional): no cache vs your cache on the caching tape
+	$(PY) scripts/run_gameday.py --scenarios configs/scenarios_cache.yaml --client resilient,cached --out reports/cache
+
 plot:                ## figure for the postmortem (needs matplotlib)
 	$(PY) scripts/plot_timeseries.py --scenario G2_overload_storm
 
@@ -36,4 +39,4 @@ lint:
 	ruff check src tests scripts
 
 clean:
-	rm -rf .pytest_cache .ruff_cache .mypy_cache reports/gameday reports/*.json reports/*.png
+	rm -rf .pytest_cache .ruff_cache .mypy_cache reports/gameday reports/cache reports/*.json reports/*.png

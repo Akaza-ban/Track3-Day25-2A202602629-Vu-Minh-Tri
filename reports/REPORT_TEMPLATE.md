@@ -108,3 +108,31 @@ chỉ có sự cố này).
 
 Một tình huống mà client của bạn vẫn xử lý kém (gợi ý: G2 p95, chi phí khi beta gánh tải, cả 4 provider cùng chậm…),
 và bạn sẽ sửa thế nào.
+
+## 8. *(Tùy chọn — Part G)* Cache
+
+Số từ `reports/cache/*.json` (`make cache`).
+
+| Client | availability | faq_availability | cache_hit_ratio | stale_served | wrong_answers | outdated_answers | cost/turn | PASS? |
+|---|---:|---:|---:|---:|---:|---:|---:|:---:|
+| resilient (không cache) | | | | | | | | |
+| cached (của bạn) | | | | | | | | |
+
+| Tham số `cache:` | Giá trị | Vì sao (số liệu nào) |
+|---|---:|---|
+| similarity_threshold | | |
+| ttl_s | | |
+| max_stale_s | | |
+
+Thí nghiệm (mỗi cái 2–4 câu + số):
+
+1. **Ngưỡng.** Chạy C1 với `similarity_threshold` = 0,80 / giá trị của bạn / 0,97. Ghi hit ratio, `wrong_answers`, cost.
+   Câu nào bị trả nhầm ở 0,80 (gợi ý: `wrong_answers_by_reason`, các cặp "gần mà khác")?
+2. **TTL.** Chạy với `ttl_s` = 30 / 60 / 300. Vì sao webhook không giúp được gì cho `outdated_answers`, và TTL là thứ
+   duy nhất giới hạn nó?
+3. **Stale-if-error.** Chạy với `max_stale_s: 0`. `faq_availability` thay đổi thế nào?
+
+Trả lời:
+
+- Vì sao câu hỏi cá nhân ("Đơn #48213 của tôi đang ở đâu?") **không** được cache, kể cả khi cache theo từng user?
+- Trong lúc mọi provider sập, dashboard vẫn xanh nhờ cache. Bạn sẽ alert dựa trên số nào để on-call vẫn biết có sự cố?

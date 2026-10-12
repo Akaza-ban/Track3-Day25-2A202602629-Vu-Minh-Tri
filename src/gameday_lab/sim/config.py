@@ -65,6 +65,21 @@ class Window:
 
 
 @dataclass(frozen=True)
+class TimedValue:
+    t: float
+    value: str
+
+
+@dataclass(frozen=True)
+class FaqTraffic:
+    """FAQ turns (Part G): one ``chat`` call that carries a Request and may be served from a cache."""
+
+    share: float = 0.6  # share of user turns that are FAQ questions
+    personal_share: float = 0.25  # of those, questions about the user's own data
+    users: int = 2000
+
+
+@dataclass(frozen=True)
 class Scenario:
     key: str
     title: str
@@ -75,6 +90,10 @@ class Scenario:
     primary_only: tuple[Window, ...] = ()  # windows where failover is NOT needed
     restore_at: float | None = None  # when the provider-side incident ends
     checks: dict[str, Any] = field(default_factory=dict)  # pass criteria
+    faq: FaqTraffic | None = None  # Part G tapes only
+    content_updates: tuple[TimedValue, ...] = ()  # document changes announced to the client (webhook)
+    silent_updates: tuple[TimedValue, ...] = ()  # document changes nobody announces
+    prompt_deploys: tuple[TimedValue, ...] = ()  # new system prompt / model version from time t
 
 
 @dataclass(frozen=True)
@@ -94,6 +113,7 @@ class LabConfig:
     fallback_order: tuple[str, ...]
     client: dict[str, Any]
     scenarios: dict[str, Scenario]
+    cache: dict[str, Any] = field(default_factory=dict)
 
     def provider_infos(self) -> dict[str, ProviderInfo]:
         return {p.name: p.info() for p in self.providers}
@@ -101,6 +121,10 @@ class LabConfig:
 
 def _windows(raw: list[dict[str, Any]] | None, key: str) -> tuple[Window, ...]:
     return tuple(Window(float(w["start"]), float(w["end"]), float(w[key])) for w in raw or [])
+
+
+def _timed(raw: list[dict[str, Any]] | None, key: str) -> tuple[TimedValue, ...]:
+    return tuple(TimedValue(float(e["t"]), str(e[key])) for e in raw or [])
 
 
 def _scenario(key: str, raw: dict[str, Any]) -> Scenario:
@@ -116,6 +140,10 @@ def _scenario(key: str, raw: dict[str, Any]) -> Scenario:
         ),
         restore_at=raw.get("restore_at"),
         checks=dict(raw.get("checks", {})),
+        faq=FaqTraffic(**raw["faq"]) if raw.get("faq") else None,
+        content_updates=_timed(raw.get("content_updates"), "source"),
+        silent_updates=_timed(raw.get("silent_updates"), "source"),
+        prompt_deploys=_timed(raw.get("prompt_deploys"), "version"),
     )
 
 
@@ -140,4 +168,5 @@ def load_config(path: str | Path = "configs/gameday.yaml",
         fallback_order=tuple(raw["fallback_order"]),
         client=dict(raw.get("client", {})),
         scenarios={k: _scenario(k, v) for k, v in scen_raw.items()},
+        cache=dict(raw.get("cache", {})),
     )

@@ -1,4 +1,4 @@
-# Lab 25B — Game Day: Retry Storm, Circuit Breaker, Idempotency & Error Budget
+# Lab 25B — Game Day: Retry Storm, Circuit Breaker, Cache, Idempotency & Error Budget
 
 **AICB-P2T3 · Ngày 25 · Circuit Breakers, Caching & Reliability for Production Agents**
 
@@ -47,6 +47,8 @@ Sau lab, bạn làm được:
 5. Làm workflow có side effect đạt **exactly-once effect**: idempotency key + checkpoint + resume sau crash.
 6. Viết **burn-rate alerting** đa cửa sổ (SRE Workbook) và tính **error budget**.
 7. Viết một **postmortem blameless** có số liệu.
+8. *(Tùy chọn)* Dùng **semantic cache có kiểm soát** (scope, ngưỡng, TTL, invalidation) và **stale-if-error** để câu hỏi
+   FAQ vẫn được trả lời khi mọi provider sập — mà không trả lời sai.
 
 ## 3. Cài đặt và chạy
 
@@ -60,6 +62,7 @@ make gameday     # client của bạn (sau khi làm Part A–C)
 make compare     # naive vs của bạn, cạnh nhau
 make workflows   # Part D
 make slo         # Part E
+make cache       # Part G (tùy chọn): không cache vs cache của bạn trên băng C1
 make plot        # hình cho postmortem (cần: pip install -e ".[plot]")
 make grade       # điểm tự động (90/100) -> reports/scoreboard.json
 ```
@@ -91,6 +94,8 @@ Không có `make`? Chạy trực tiếp: `python scripts/run_gameday.py --client
 `amplification` (attempt / logical call), `retry_ratio` (retry *cùng provider* / call), `cost_per_good_turn`,
 `recovery_s` (từ lúc provider hồi phục đến khi 95% call thành công trong 30 s), `primary_share_after_restore`,
 `retry_after_violations`, `client_error_retries`, `incompatible_routes`, `unneeded_failovers`.
+Băng caching (Part G) có thêm `faq_availability`, `cache_hit_ratio`, `stale_served`, `wrong_answers`
+(+ `wrong_answers_by_reason`) và `outdated_answers`.
 
 ## 5. Sáu băng sự cố
 
@@ -105,9 +110,12 @@ Không có `make`? Chạy trực tiếp: `python scripts/run_gameday.py --client
 
 Khi chấm, giảng viên dùng **bản băng ẩn** (lệch thời điểm, đổi cường độ) và nhiều seed — đừng hard-code thời gian.
 
+Băng thứ bảy, **C1** (tùy chọn), nằm riêng trong `configs/scenarios_cache.yaml` — xem Part G.
+
 ## 6. Nhiệm vụ
 
-Thời lượng thiết kế: **4 giờ** = 2 giờ core trên lớp (A–C) + 2 giờ stretch (D–F).
+Thời lượng thiết kế: **4 giờ** = 2 giờ core trên lớp (A–C) + 2 giờ stretch (D–F). Part G là phần **tùy chọn**
+(~45 phút, điểm thưởng) cho nhóm xong sớm hoặc làm ở nhà.
 
 ### Part A — Phân loại lỗi & retry (15 điểm · ~30 phút)
 File: `src/gameday_lab/errors.py`, `src/gameday_lab/retry.py` · Test: `tests/test_errors_retry.py`
@@ -147,12 +155,37 @@ File: `src/gameday_lab/slo/alerting.py` · Test: `tests/test_alerting.py` (5đ) 
 Copy `reports/REPORT_TEMPLATE.md` → `reports/REPORT.md` và điền đủ. Trọng tâm: **postmortem blameless cho băng G2**
 với client naive (dùng `make plot` + CSV trong `reports/gameday/`).
 
+### Part G — *(Tùy chọn, +10 điểm thưởng)* Semantic cache & stale-if-error (~45 phút)
+File: `src/gameday_lab/cache.py` · Test: `tests/test_cache.py` (3đ) + băng C1 (5đ) + report mục 8 (2đ)
+
+60% lượt user là câu hỏi FAQ ("Chính sách hoàn tiền thế nào?", "Phí ship đi tỉnh bao nhiêu?"). Mỗi lượt FAQ là **một**
+call `chat` mang `call.request` (`text`, `user_id`, `personal`, `prompt_version`, `embedding`). Khi call thành công,
+simulator đặt câu trả lời vào `call.answer` (`Answer` có `prompt_version` và `sources` — các tài liệu nguồn). Client
+được trả lời từ cache bằng action mới `Serve(answer, stale)`. Xem `src/gameday_lab/sim/contracts.py`.
+
+- `SemanticCache` — `lookup` / `store` / `invalidate`: tìm theo cosine **trong cùng scope** (`prompt_version`) với
+  ngưỡng `similarity_threshold`; câu hỏi cá nhân (`request.personal`: đơn hàng, tiền hoàn, điểm của *chính* user)
+  **không** nằm trong allowlist; entry còn tươi trong `ttl_s`, sau đó là cửa sổ stale `max_stale_s`; invalidate theo
+  `source`; tối đa `max_entries` (LRU).
+- `CachingClient` bọc `ResilientClient` của bạn: hit còn tươi → `Serve` (không gọi provider); miss → provider, rồi lưu
+  `call.answer`; provider bỏ cuộc (`GiveUp`) → trả câu trả lời cũ nếu còn trong cửa sổ stale (**stale-if-error** —
+  bậc 3 "cached response" của fallback ladder); webhook `on_content_update(source)` → invalidate.
+- Băng **C1_faq_outage** (`make cache`): t=150 chính sách hoàn tiền đổi (**có** webhook) · t=240–360 **mọi** provider
+  sập · t=420 deploy prompt v2 · t=480 bảng phí ship đổi **không báo trước**. Đạt khi:
+  `wrong_answers = 0` (không trả nhầm câu hỏi khác, không lộ dữ liệu của user khác, không dùng câu trả lời của prompt cũ
+  hay của tài liệu đã được báo là đổi), `outdated_answers ≤ 15` (thay đổi không báo trước — chỉ TTL giới hạn được),
+  `faq_availability ≥ 93%`, `cache_hit_ratio ≥ 50%`.
+- Khối `cache:` trong `configs/gameday.yaml` của starter **cố ý chưa tốt**. Chạy `make cache`, đọc
+  `wrong_answers_by_reason`, chỉnh từng tham số và giải thích bằng số ở mục 8 của report.
+
+`tests/test_cache.py` dùng client giả nên làm được ngay; băng C1 cần `ResilientClient` (Part C) đã chạy.
+
 ## 7. Quy tắc
 
 - **Không sửa**: `src/gameday_lab/sim/`, `naive_client.py`, `workflows/services.py`, `workflows/runner.py`,
-  `workflows/naive_executor.py`, `slo/data.py`, `slo/scoring.py`, `configs/scenarios.yaml`, `tests/`.
-  Grader dùng bản riêng của các file này.
-- **Được sửa**: các file có `TODO`, khối `client:` trong `configs/gameday.yaml`, thêm file/test của bạn.
+  `workflows/naive_executor.py`, `slo/data.py`, `slo/scoring.py`, `configs/scenarios.yaml`,
+  `configs/scenarios_cache.yaml`, `tests/`. Grader dùng bản riêng của các file này.
+- **Được sửa**: các file có `TODO`, khối `client:` và `cache:` trong `configs/gameday.yaml`, thêm file/test của bạn.
 - Không hard-code thời điểm sự cố hay tên băng trong client. Không đọc state nội bộ của simulator.
 
 ## 8. Nộp bài
@@ -170,6 +203,9 @@ từ `make grade`. Grader chạy: `pip install -e ".[dev]" && make grade` trên 
 | D. Workflow exactly-once | 15 | `tests/test_executor.py` (5) + 500 workflow có crash (10) |
 | E. Alerting & error budget | 15 | `tests/test_alerting.py` (5) + dữ liệu public (5) + dữ liệu ẩn (5) |
 | F. Report & postmortem | 10 | chấm tay — xem `docs/RUBRIC.md` |
+| G. *(Tùy chọn)* Caching | +10 thưởng | `tests/test_cache.py` (3) + băng C1 (5, băng ẩn, nhiều seed) + report mục 8 (2) |
+
+Điểm thưởng Part G bù được điểm mất ở phần khác, nhưng tổng vẫn tối đa 100.
 
 ## 10. Lỗi thường gặp
 
@@ -186,6 +222,12 @@ từ `make grade`. Grader chạy: `pip install -e ".[dev]" && make grade` trên 
 | Ghi checkpoint **trước** khi chạy step | Part D: hoàn tiền bị mất |
 | Bắt `WorkerCrash` trong executor | test_executor |
 | Alert theo ngưỡng 5 phút | Part E: false page trên blip |
+| Ngưỡng similarity quá lỏng (vd. 0,80) | C1: `wrong_answers` (`other_question`) |
+| Cache câu trả lời cá nhân | C1: `other_user` — lộ đơn hàng của người khác; test_cache |
+| Scope thiếu `prompt_version` | C1: `old_prompt` |
+| Bỏ qua webhook `on_content_update` | C1: `ignored_invalidation` |
+| TTL quá dài | C1: `outdated_answers` |
+| Không có stale-if-error, hoặc `max_stale_s` ngắn hơn sự cố | C1: `faq_availability` |
 
 ## 11. FAQ
 
@@ -195,8 +237,13 @@ từ `make grade`. Grader chạy: `pip install -e ".[dev]" && make grade` trên 
 **Retry budget có được chấm trên băng không?** Gián tiếp (G3 `retry_ratio`) và qua unit test. Trong report có một
 thí nghiệm bật/tắt budget — hãy giải thích kết quả.
 
-**Lab có phần caching không?** Không. Lab này chỉ tập trung vào xử lý lỗi (retry, breaker, fallback, idempotency, SLO);
-prompt caching và semantic cache được học trong bài giảng Day 25.
+**Lab có phần caching không?** Có — Part G (tùy chọn, điểm thưởng): semantic cache có scope, ngưỡng, TTL, invalidation
+và stale-if-error, chấm trên băng C1. Prompt caching phía provider (giảm giá token đầu vào) không mô phỏng ở đây —
+xem bài giảng Day 25.
+
+**Sao `faq_availability` ở C1 không lên được 100%?** Trong 2 phút mọi provider sập, câu hỏi cá nhân không được trả lời
+từ cache, nên luôn thất bại. Lượt không phải FAQ (cần tool call) cũng thất bại, vì vậy `availability` tổng thấp hơn
+`faq_availability`.
 
 ## 12. Đọc thêm
 
@@ -205,3 +252,5 @@ prompt caching và semantic cache được học trong bài giảng Day 25.
 - Bronson et al., *Metastable Failures in Distributed Systems* (HotOS 2021).
 - Google Cloud incident report 12/06/2025 (Service Control, thiếu randomized backoff); OpenAI status write-up 03/02/2026.
 - Stripe API docs, *Idempotent requests*.
+- RFC 5861, *HTTP Cache-Control Extensions for Stale Content* (`stale-while-revalidate`, `stale-if-error`).
+- *vCache: Verified Semantic Prompt Caching* (arXiv:2502.03771).

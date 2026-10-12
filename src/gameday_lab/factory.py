@@ -17,6 +17,10 @@ def build_client(name: str, cfg: LabConfig, seed: int = 1) -> BaseClient:
         from gameday_lab.client import ResilientClient
 
         return ResilientClient(cfg.provider_infos(), cfg.fallback_order, cfg.client, seed=seed)
+    if name == "cached":
+        from gameday_lab.cache import CachingClient, SemanticCache
+
+        return CachingClient(build_client("resilient", cfg, seed), SemanticCache(**cfg.cache))
     raise ValueError(f"unknown client {name!r}")
 
 

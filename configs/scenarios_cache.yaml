@@ -1,0 +1,20 @@
+# Part G (optional) — caching tape. DO NOT EDIT — the grader uses its own copy.
+# Times are virtual seconds from the start of the tape.
+
+scenarios:
+
+  C1_faq_outage:
+    title: "FAQ traffic; refund policy changes at 150 s (webhook); all providers unreachable 240-360 s; prompt v2 at 420 s; shipping fees change silently at 480 s"
+    duration_s: 720
+    faq: {share: 0.6, personal_share: 0.25}
+    content_updates: [{t: 150, source: policy/refund}]      # the CMS sends a webhook
+    effects:
+      - {start: 240, end: 360, outage: refuse}               # no provider / family given -> all four
+    prompt_deploys: [{t: 420, version: v2}]
+    silent_updates: [{t: 480, source: policy/shipping}]      # the carrier changes its price list, no webhook
+    restore_at: 360
+    checks:
+      wrong_answers_max: 0
+      outdated_answers_max: 15
+      faq_availability_min: 0.93
+      cache_hit_ratio_min: 0.5

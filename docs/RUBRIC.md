@@ -41,3 +41,13 @@
 | Hard-code thời điểm / tên băng trong client | Part C = 0 |
 | Report không có số liệu | tối đa −5 |
 | Code không chạy trên máy sạch (`pip install -e ".[dev]" && make grade`) | −10 |
+
+## Điểm thưởng — Part G, caching (tùy chọn, tối đa +10)
+
+Điểm thưởng bù được điểm mất ở phần khác; tổng điểm vẫn tối đa 100.
+
+| Nguồn | Điểm | Cách chấm |
+|---|---:|---|
+| `tests/test_cache.py` | 3 | 3 × (test pass / tổng) |
+| Băng C1 (`make cache`) | 5 | PASS **mọi** check trên **mọi** seed; giảng viên chấm bằng băng ẩn + 3 seed |
+| Report mục 8 | 2 | Có bảng không cache / có cache; mỗi tham số `cache:` có lý do gắn với số liệu (`wrong_answers_by_reason`, `outdated_answers`, `faq_availability`); trả lời đúng câu hỏi về câu trả lời cá nhân và về alert khi đang phục vụ stale |

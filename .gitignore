@@ -7,3 +7,4 @@ __pycache__/
 reports/gameday/
 reports/*.json
 reports/*.png
+reports/cache/

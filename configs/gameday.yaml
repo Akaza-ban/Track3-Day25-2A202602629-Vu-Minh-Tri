@@ -46,3 +46,14 @@ client:
     open_duration_s: 10.0
     half_open_max_probes: 2
     half_open_successes: 2
+
+# ----------------------------------------------------------------------------
+# Part G (optional): YOUR semantic cache settings (read by SemanticCache).
+# These starter values are deliberately naive: run `make cache`, read
+# wrong_answers_by_reason, tune each value and justify it in report section 8.
+# ----------------------------------------------------------------------------
+cache:
+  similarity_threshold: 0.80
+  ttl_s: 600
+  max_stale_s: 0
+  max_entries: 500

@@ -1,7 +1,7 @@
 [project]
 name = "day25-gameday-lab"
-version = "1.0.0"
-description = "Lab 25B — Game Day: retry storms, circuit breakers, idempotency and error budgets for LLM agents."
+version = "1.1.0"
+description = "Lab 25B — Game Day: retry storms, circuit breakers, caching, idempotency and error budgets for LLM agents."
 requires-python = ">=3.10"
 dependencies = ["pyyaml>=6.0"]
 

@@ -2,8 +2,11 @@
 
     python scripts/grade.py                      # what students run
     python scripts/grade.py --seeds 25,26,27 \\
-        --scenarios configs/scenarios_hidden.yaml \\
+        --scenarios instructor/scenarios_hidden.yaml \\
+        --cache-scenarios instructor/scenarios_cache_hidden.yaml \\
         --hidden-slo data/sli_30d_hidden.csv     # what instructors run
+
+Part G (caching) is optional: up to 8 automatic bonus points (+2 for its report section).
 """
 
 from __future__ import annotations
@@ -36,11 +39,14 @@ UNIT_TESTS = {  # file -> (part, points)
     "tests/test_executor.py": ("D", 5),
     "tests/test_alerting.py": ("E", 5),
 }
+BONUS_TESTS = {"tests/test_cache.py": ("G", 3)}  # Part G (optional)
 POINTS_PER_TAPE = 4  # 6 tapes -> 24
 WORKFLOW_POINTS = 10
 SLO_PUBLIC_POINTS = 5
 SLO_HIDDEN_POINTS = 5
 REPORT_POINTS = 10
+CACHE_TAPE_POINTS = 5
+BONUS_REPORT_POINTS = 2
 WORKFLOW_CHECKS = {"duplicate_refunds": 0, "duplicate_emails": 0, "lost_refunds": 0}
 
 
@@ -55,10 +61,11 @@ class _Collector:
 
 def unit_tests() -> dict[str, Any]:
     collector = _Collector()
+    files = {**UNIT_TESTS, **BONUS_TESTS}
     with contextlib.redirect_stdout(io.StringIO()):
-        pytest.main(["-q", "-p", "no:cacheprovider", *UNIT_TESTS], plugins=[collector])
+        pytest.main(["-q", "-p", "no:cacheprovider", *files], plugins=[collector])
     out = {}
-    for path, (part, pts) in UNIT_TESTS.items():
+    for path, (part, pts) in files.items():
         res = collector.results.get(path, [])
         passed = sum(res)
         out[path] = {"part": part, "passed": passed, "total": len(res),
@@ -66,21 +73,22 @@ def unit_tests() -> dict[str, Any]:
     return out
 
 
-def gameday(cfg_path: str, scen_path: str, seeds: list[int]) -> dict[str, Any]:
+def gameday(cfg_path: str, scen_path: str, seeds: list[int], client: str = "resilient",
+            points: int = POINTS_PER_TAPE) -> dict[str, Any]:
     cfg = load_config(cfg_path, scen_path)
     out = {}
     for key, sc in cfg.scenarios.items():
         runs = []
         for seed in seeds:
             try:
-                m = run_scenario(cfg, key, build_client("resilient", cfg), seed).metrics()
+                m = run_scenario(cfg, key, build_client(client, cfg), seed).metrics()
                 checks = evaluate_checks(m, sc.checks)
                 runs.append({"seed": seed, "pass": all(checks.values()),
                              "failed": [k for k, v in checks.items() if not v]})
             except NotImplementedError as exc:
                 runs.append({"seed": seed, "pass": False, "failed": [f"NotImplementedError: {exc}"]})
         ok = all(r["pass"] for r in runs)
-        out[key] = {"pass": ok, "points": POINTS_PER_TAPE if ok else 0, "max": POINTS_PER_TAPE, "runs": runs}
+        out[key] = {"pass": ok, "points": points if ok else 0, "max": points, "runs": runs}
     return out
 
 
@@ -116,6 +124,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/gameday.yaml")
     ap.add_argument("--scenarios", default="configs/scenarios.yaml")
+    ap.add_argument("--cache-scenarios", default="configs/scenarios_cache.yaml")
     ap.add_argument("--seeds", default="25")
     ap.add_argument("--hidden-slo", default=None)
     ap.add_argument("--out", default="reports/scoreboard.json")
@@ -125,7 +134,9 @@ def main() -> None:
     board: dict[str, Any] = {"unit_tests": unit_tests(),
                              "gameday": gameday(args.config, args.scenarios, seeds),
                              "workflows": workflows(seeds),
-                             "slo_public": slo("data/sli_30d.csv", "data/sli_30d_labels.json", SLO_PUBLIC_POINTS)}
+                             "slo_public": slo("data/sli_30d.csv", "data/sli_30d_labels.json", SLO_PUBLIC_POINTS),
+                             "cache_tape": gameday(args.config, args.cache_scenarios, seeds, "cached",
+                                                   CACHE_TAPE_POINTS)}
     if args.hidden_slo:
         labels = args.hidden_slo.replace(".csv", "_labels.json")
         board["slo_hidden"] = slo(args.hidden_slo, labels, SLO_HIDDEN_POINTS)
@@ -139,10 +150,14 @@ def main() -> None:
     parts["C"] += sum(r["points"] for r in board["gameday"].values())
     parts["D"] += board["workflows"]["points"]
     parts["E"] += board["slo_public"]["points"] + board["slo_hidden"]["points"]
-    auto = round(sum(parts.values()), 2)
+    parts["G"] += sum(r["points"] for r in board["cache_tape"].values())
+    auto = round(sum(v for k, v in parts.items() if k != "G"), 2)
+    bonus = round(parts["G"], 2)
     board["summary"] = {"parts": {k: round(v, 2) for k, v in sorted(parts.items())},
                         "automatic": auto, "automatic_max": 100 - REPORT_POINTS,
-                        "report_max": REPORT_POINTS}
+                        "report_max": REPORT_POINTS,
+                        "bonus_g": bonus, "bonus_g_automatic_max": 3 + CACHE_TAPE_POINTS,
+                        "bonus_g_report_max": BONUS_REPORT_POINTS}
 
     print("\nUnit tests")
     for path, r in board["unit_tests"].items():
@@ -154,8 +169,13 @@ def main() -> None:
     print(f"Workflows         [D] {'PASS' if board['workflows']['pass'] else 'FAIL'}")
     print(f"SLO alerting      [E] public {'PASS' if board['slo_public']['pass'] else 'FAIL'}"
           f" | hidden {board['slo_hidden']['pass']}")
+    print("Cache tape, optional (cached client, seeds " + args.seeds + ")")
+    for key, r in board["cache_tape"].items():
+        failed = sorted({f for run in r["runs"] for f in run["failed"]})
+        print(f"  [G] {key:28s} {'PASS' if r['pass'] else 'FAIL'} {', '.join(failed)}")
     print(f"\nParts: {board['summary']['parts']}")
     print(f"AUTOMATIC SCORE: {auto} / {100 - REPORT_POINTS}   (+ report & postmortem: /{REPORT_POINTS})")
+    print(f"BONUS Part G:    {bonus} / {3 + CACHE_TAPE_POINTS}    (+ report section 8: /{BONUS_REPORT_POINTS})")
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(board, indent=2, default=str))
 

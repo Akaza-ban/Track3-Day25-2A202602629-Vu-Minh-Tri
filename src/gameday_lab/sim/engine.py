@@ -16,11 +16,23 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from gameday_lab.sim.config import LabConfig, Scenario
-from gameday_lab.sim.contracts import Attempt, BaseClient, CallContext, GiveUp, ProviderError, Send
+from gameday_lab.sim.contracts import (
+    Answer,
+    Attempt,
+    BaseClient,
+    CallContext,
+    GiveUp,
+    ProviderError,
+    Request,
+    Send,
+    Serve,
+)
+from gameday_lab.sim.faq import FaqCatalog, Intent
 from gameday_lab.sim.providers import Outcome, ProviderSim
 
 MAX_ATTEMPTS_PER_CALL = 100  # safety net against infinite retry loops
 TAIL_S = 120.0  # keep processing in-flight work this long after the last arrival
+CACHE_LATENCY_S = 0.02  # answering from the cache
 
 
 @dataclass
@@ -28,9 +40,20 @@ class _Turn:
     turn_id: int
     start: float
     deadline: float
+    steps: tuple[str, ...] = ("tool", "chat")
+    request: Request | None = None  # FAQ turns (Part G)
+    intent: Intent | None = None  # ground truth for the request, hidden from the client
     step: int = 0
     end: float | None = None
     good: bool = False
+
+
+@dataclass(frozen=True)
+class _AnswerTruth:
+    answer: Answer
+    intent: str
+    owner: str | None  # user the answer belongs to (personal questions)
+    versions: tuple[int, ...]  # version of each source document when the answer was generated
 
 
 @dataclass
@@ -58,6 +81,19 @@ class Simulation:
         }
         self.primary = cfg.fallback_order[0]
         self.infos = cfg.provider_infos()
+        # --- Part G: FAQ traffic, documents, prompt versions, answers ---
+        self.rng_faq = random.Random(f"{base_seed}-{scenario.key}-faq")
+        self.faq = FaqCatalog() if scenario.faq is not None else None
+        self.prompt_version = "v1"
+        self.doc_version: Counter[str] = Counter()
+        self.announced_version: Counter[str] = Counter()  # last version the client was told about
+        self.answers: dict[int, _AnswerTruth] = {}
+        self._answer_ids = itertools.count(1)
+        self.cache_served = 0
+        self.stale_served = 0
+        self.wrong_answers: Counter[str] = Counter()
+        self.outdated_answers = 0
+        self.per_second_cache: Counter[int] = Counter()
         self.now = 0.0
         self._heap: list[tuple[float, int, Callable[..., None], tuple[Any, ...]]] = []
         self._seq = itertools.count()
@@ -95,6 +131,12 @@ class Simulation:
                 break
             turn_id += 1
             self._at(t, self._new_turn, turn_id)
+        for u in self.sc.content_updates:
+            self._at(u.t, self._update_document, u.value, True)
+        for u in self.sc.silent_updates:
+            self._at(u.t, self._update_document, u.value, False)
+        for d in self.sc.prompt_deploys:
+            self._at(d.t, self._deploy_prompt, d.value)
         horizon = self.sc.duration_s + TAIL_S
         while self._heap:
             t, _, fn, args = heapq.heappop(self._heap)
@@ -106,9 +148,22 @@ class Simulation:
 
     # ------------------------------------------------------------------ turns
     def _new_turn(self, turn_id: int) -> None:
-        turn = _Turn(turn_id, self.now, self.now + self.cfg.workload.turn_deadline_s)
+        turn = _Turn(turn_id, self.now, self.now + self.cfg.workload.turn_deadline_s,
+                     steps=self.cfg.workload.steps)
+        if self.faq is not None and self.sc.faq is not None and self.rng_faq.random() < self.sc.faq.share:
+            turn.request, turn.intent = self.faq.sample(self.rng_faq, self.sc.faq, self.prompt_version)
+            turn.steps = ("chat",)  # FAQ: answered from the policy documents, no tool call
         self.turns.append(turn)
         self._start_call(turn)
+
+    def _update_document(self, source: str, announced: bool) -> None:
+        self.doc_version[source] += 1
+        if announced:
+            self.announced_version[source] = self.doc_version[source]
+            self.client.on_content_update(source, self.now)
+
+    def _deploy_prompt(self, version: str) -> None:
+        self.prompt_version = version
 
     def _malformed_rate(self, t: float) -> float:
         rate = self.cfg.workload.base_malformed_rate
@@ -118,8 +173,9 @@ class Simulation:
         return rate
 
     def _start_call(self, turn: _Turn) -> None:
-        task = self.cfg.workload.steps[turn.step]
-        call = CallContext(next(self._call_ids), turn.turn_id, task, self.now, turn.deadline)
+        task = turn.steps[turn.step]
+        call = CallContext(next(self._call_ids), turn.turn_id, task, self.now, turn.deadline,
+                           request=turn.request)
         meta = _CallMeta(turn, task, self.rng_calls.random() < self._malformed_rate(self.now))
         self.meta[call.call_id] = meta
         self.calls_total += 1
@@ -139,7 +195,7 @@ class Simulation:
             turn.end, turn.good = self.now, False
             return
         turn.step += 1
-        if turn.step >= len(self.cfg.workload.steps):
+        if turn.step >= len(turn.steps):
             turn.end, turn.good = self.now, True
             return
         gap = self.cfg.workload.tool_exec_s if meta.task == "tool" else 0.0
@@ -150,8 +206,11 @@ class Simulation:
         if isinstance(action, GiveUp):
             self._finish_call(call, False, action.reason)
             return
+        if isinstance(action, Serve):
+            self._serve(call, action)
+            return
         if not isinstance(action, Send):
-            raise TypeError(f"client returned {action!r}; expected Send or GiveUp")
+            raise TypeError(f"client returned {action!r}; expected Send, GiveUp or Serve")
         if action.provider not in self.providers:
             raise ValueError(f"unknown provider {action.provider!r}")
         meta = self.meta[call.call_id]
@@ -201,12 +260,58 @@ class Simulation:
                 meta.not_before[attempt.provider] = self.now + err.retry_after
             self._dispatch(call, self.client.on_error(attempt, err, self.now))
             return
+        if meta.turn.request is not None and not out.bad_output:
+            call.answer = self._new_answer(meta.turn)
         self.client.on_success(attempt, self.now, latency)
         if out.bad_output:
             self.incompatible_routes += 1
             self._finish_call(call, False, "incompatible_model_output")
         else:
             self._finish_call(call, True)
+
+    # ------------------------------------------------------------------ cache (Part G)
+    def _new_answer(self, turn: _Turn) -> Answer:
+        assert self.faq is not None and turn.request is not None and turn.intent is not None
+        req = turn.request
+        sources = self.faq.sources(turn.intent, req.user_id)
+        answer = Answer(next(self._answer_ids), req.prompt_version, sources, self.now)
+        owner = req.user_id if req.personal else None
+        self.answers[answer.answer_id] = _AnswerTruth(answer, turn.intent.key, owner,
+                                                      tuple(self.doc_version[s] for s in sources))
+        return answer
+
+    def _serve(self, call: CallContext, serve: Serve) -> None:
+        turn = self.meta[call.call_id].turn
+        if turn.request is None or turn.intent is None:
+            raise ValueError("Serve is only allowed on calls that carry a request (FAQ turns)")
+        truth = self.answers.get(serve.answer.answer_id)
+        if truth is None or truth.answer != serve.answer:
+            raise ValueError("Serve must return an Answer produced by the simulator (call.answer)")
+        self.cache_served += 1
+        self.stale_served += int(serve.stale)
+        self.per_second_cache[int(self.now)] += 1
+        reason = self._wrong_reason(turn, truth)
+        if reason is not None:
+            self.wrong_answers[reason] += 1
+        elif any(self.doc_version[s] != v for s, v in zip(truth.answer.sources, truth.versions)):
+            self.outdated_answers += 1  # nobody announced the change: only a TTL limits this
+        ok = reason is None
+        self._at(self.now + CACHE_LATENCY_S, self._finish_call, call, ok, "" if ok else f"cache_{reason}")
+
+    def _wrong_reason(self, turn: _Turn, truth: _AnswerTruth) -> str | None:
+        req = turn.request
+        assert req is not None and turn.intent is not None
+        if truth.owner is not None and truth.owner != req.user_id:
+            return "other_user"  # data leak: someone else's order / refund / points
+        if truth.intent != turn.intent.key:
+            return "other_question"  # false hit
+        if req.personal:
+            return "personal_cached"  # personal answers go stale in minutes — never cache them
+        if truth.answer.prompt_version != req.prompt_version:
+            return "old_prompt"
+        if any(self.announced_version[s] > v for s, v in zip(truth.answer.sources, truth.versions)):
+            return "ignored_invalidation"  # the client was told this document changed
+        return None
 
     # ------------------------------------------------------------------ metrics
     def metrics(self) -> dict[str, Any]:
@@ -244,6 +349,17 @@ class Simulation:
             "unneeded_failovers": self.unneeded_failovers,
         }
         m.update(self._recovery_metrics())
+        if self.sc.faq is not None:
+            faq = [t for t in self.turns if t.request is not None]
+            m.update({
+                "faq_turns": len(faq),
+                "faq_availability": round(sum(t.good for t in faq) / max(1, len(faq)), 4),
+                "cache_hit_ratio": round(self.cache_served / max(1, len(faq)), 3),
+                "stale_served": self.stale_served,
+                "wrong_answers": sum(self.wrong_answers.values()),
+                "wrong_answers_by_reason": dict(self.wrong_answers),
+                "outdated_answers": self.outdated_answers,
+            })
         return m
 
     def _recovery_metrics(self) -> dict[str, Any]:
@@ -274,6 +390,8 @@ class Simulation:
             row: dict[str, Any] = {"t": s, "calls_ok": ok, "calls_done": tot}
             for n in names:
                 row[f"attempts_{n}"] = self.per_second_attempts[s][n]
+            if self.sc.faq is not None:
+                row["cache_served"] = self.per_second_cache[s]
             rows.append(row)
         return rows
 
