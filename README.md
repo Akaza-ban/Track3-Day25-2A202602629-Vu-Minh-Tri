@@ -69,7 +69,7 @@ make grade       # điểm tự động (88/100) -> reports/scoreboard.json
 
 Không có `make`? Chạy trực tiếp: `python scripts/run_gameday.py --client both`, `python -m pytest -q`, …
 
-## 4. Thế giới mô phỏng (đọc kỹ — không sửa)
+## 4. Môi trường mô phỏng (đọc kỹ — không sửa)
 
 - **Thời gian ảo.** Simulator (`src/gameday_lab/sim/`) là discrete-event: 8–10 phút sự cố chạy trong ~0,3 giây và
   **lặp lại được** với cùng seed. Mọi hàm của bạn nhận `now` (giây ảo). **Không** dùng `time.time()` / `time.sleep()`.
